@@ -46,7 +46,10 @@ void* SecretFinder(void* p)
 	
 	res %= module;
 	if(res == result)
+	{
 		SecretIsFound(i);
+		return p;
+	}
 	for(i = from + 1; i <= to; i++)
 	{
 		res *= base;
