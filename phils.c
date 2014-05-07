@@ -129,7 +129,7 @@ int main(int argc, char** argv)
 		free(phils[i]);
 	free(phils);
 	close(file_fd);
-	pthread_mutex_unlock(&screen);
+	pthread_mutex_destroy(&screen);
 	
 	return 0;
 }
