@@ -44,8 +44,7 @@ int main(int argc, char** argv)
 	char buf[1024];
 	while(1)
 	{
-		fd_set rdset, wrset;
-		FD_ZERO(&wrset);
+		fd_set rdset;
 		FD_ZERO(&rdset);
 		FD_SET(0, &rdset);
 		FD_SET(sock, &rdset);
@@ -63,13 +62,10 @@ int main(int argc, char** argv)
 			if(FD_ISSET(0, &rdset))
 			{
 				int bc = read(0, buf, 1024);
-				if(FD_ISSET(sock, &wrset) == 0)
-				{
-					fd_set setForSock;
-					FD_SET(sock, &setForSock);
-					if(select(sock, NULL, &setForSock, NULL, NULL) < 0) 
-						PrintError("select() error", ERRSELECT);
-				}
+				fd_set setForSock;
+				FD_SET(sock, &setForSock);
+				if(select(sock, NULL, &setForSock, NULL, NULL) < 0) 
+					PrintError("select() error", ERRSELECT);
 				write(sock, buf, bc);
 			}
 		}
