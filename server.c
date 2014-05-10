@@ -76,14 +76,10 @@ void* ReadWrite(void* p)
 	while(1)
 	{
 		pthread_mutex_lock(&m);
-		FD_ZERO(&wrset);
 		FD_ZERO(&rdset);
 		memcpy(&rdset, &fds, sizeof(fds));
-		memcpy(&wrset, &fds, sizeof(fds));
 		FD_SET(0,&rdset);
-		//FD_COPY(&fds, &rdset);
-		//FD_COPY(&fds, &wrset);
-		int n = select(maxFD + 1, &rdset, &wrset, NULL, &t);
+		int n = select(maxFD + 1, &rdset, NULL, NULL, &t);
 		if(n < 0)
 			PrintError("select() error", ERRSELECT);
 		if(n > 0)
@@ -101,17 +97,26 @@ void* ReadWrite(void* p)
 				if(FD_ISSET(fdID[i], &rdset))
 				{
 					int bc = read(fdID[i], buf, 1024); //byte counter
-					int j;
-					for(j = 0; j < fdNum; j++)
+					FD_ZERO(&wrset);
+					memcpy(&wrset, &fds, sizeof(fds));
+					int m = select(maxFD + 1, NULL, &wrset, NULL, NULL);
+					if(m < 0)
+						PrintError("select() error", ERRSELECT);
+					int j = 0;
+					m--; //want to send a message to all clients except this
+					do
+					{
 						if( j != i && FD_ISSET(fdID[j], &wrset))
 						{
 							write(fdID[j], names[i], strlen(names[i]));
 							write(fdID[j], ": ", 2);
 							write(fdID[j], buf, bc);
-							//write(fdID[j], "\n", 1);
+							m--;
 						}
+						j++;
+					} while(m > 0);
+					n--;
 				}
-				n--;
 				i++;
 			} while(n > 0);
 		}
