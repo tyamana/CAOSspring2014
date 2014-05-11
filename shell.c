@@ -3,6 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define ERRSIGACT -1
 
@@ -11,6 +14,7 @@ int MAXSIZE = 100;
 
 void SigintCatcher(int a)
 {
+	write(1,"\n", 1);
 	_exit(0);
 }
 
@@ -27,9 +31,6 @@ int main()
 	act.sa_handler = SigintCatcher;
 	if(sigaction(SIGINT, &act, NULL) == -1)
 		PrintError("sigaction() error", ERRSIGACT);
-	
-	char curDir[50];
-	getcwd(curDir, 50);
 	
 	while(1)
 	{
@@ -88,11 +89,29 @@ int main()
 		}
 		
 		if(strcmp(argv[0], "pwd") == 0)
+		{
+			char curDir[50];
+			getcwd(curDir, 50);
 			printf("%s\n", curDir);
+		}
 		
 		if(strcmp(argv[0], "cd") == 0)
 		{
-			
+			char curDir[50];
+			getcwd(curDir, 50);
+			if(j == 1)
+			{
+				
+			}
+			else
+			{
+				strcat(curDir, "/");
+				strcat(curDir, argv[1]);
+				if(chdir(curDir) < 0)
+					perror(NULL);
+				else 
+					printf("%s\n", curDir);
+			}
 		}
 	}
 		
