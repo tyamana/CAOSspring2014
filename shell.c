@@ -99,9 +99,13 @@ int main()
 		{
 			char curDir[50];
 			getcwd(curDir, 50);
-			if(j == 1)
+			if(j == 1 || !strcmp(argv[1], ">") || !strcmp(argv[1], "|"))
 			{
-				
+				char* homeDir = getenv("HOME");
+				if(chdir(homeDir) < 0)
+					perror(NULL);
+				else 
+					printf("%s\n", homeDir);
 			}
 			else
 			{
