@@ -45,6 +45,7 @@ int main()
 		/*flags[o] - memory flag, if it == 1, then we should realloc()
 		  flags[1] - output to a file flag 
 		  flags[2] - output to an end of file flag */
+		int run_in = 0; // run in background
 		int fileIndex = 0; // index of argument in argv with path of file
 		int conveyorWasDetected = 0;
 		int convDelimsId[100] = {0};
@@ -90,6 +91,10 @@ int main()
 					printf("Unknown command \"%s\"\n", argument);
 					argumentsAreCorrect = 0;
 				}
+			}
+			else if (c == '&') 
+			{
+				run_in == 1;
 			}
 			//output in file
 			else if(c == '>' && i == 0)
@@ -258,6 +263,89 @@ int main()
 				}
 			}
 		}
+		// RUNNING
+		if (run_in) // run in background
+		{ 
+		
+			int PID = fork();	
+			if (PID < 0) 
+			{ 
+				perror("FORK");
+				exit(0);	
+			}
+			
+			if (PID == 0)
+			{ // потомок выполняет
+				int stdin_fd = dup(1);
+				if (flags[1]) {
+					int fd = open(argument[fileIndex], O_CREATE | O_TRUNC, 0777);
+					if (fd < 0)
+					{
+						perror("> FILE");
+						continue;
+					}
+					if (dup2(fd, 1) < 0) {
+						perror("DUP");
+					}
+				}
+				else if (flags[2]) {
+					int fd = open(argument[fileIndex], O_APPEND, 0777);
+					if (fd < 0) {
+						perror(">> FILE");
+						continue;
+					}
+					if (dup2(fd, 1) < 0) {
+						perror("DUP");
+					}
+				}
+				if (execvp(argv[0], argv) == -1) 
+				{ // запускаем процесс
+					perror("EXEC");
+					return;
+				}
+				close(fd);
+				dup2(stdin_fd, 1);
+				return;
+			}
+			else 
+			{ // родитель читает дальше
+				continue;
+			}	
+		}
+		else 
+		{
+			int stdin_fd = dup(1);
+			if (flags[1]) {
+				int fd = open(argument[fileIndex], O_CREATE | O_TRUNC, 0777);
+				if (fd < 0)
+				{
+					perror("> FILE");
+					continue;
+				}
+				if (dup2(fd, 1) < 0) {
+					perror("DUP");
+				}
+				
+			}
+			else if (flags[2]) {
+				int fd = open(argument[fileIndex], O_APPEND, 0777);
+				if (fd < 0) {
+					perror(">> FILE");
+					continue;
+				}
+				if (dup2(fd, 1) < 0) {
+					perror("DUP");
+				}
+			}
+			if (execvp(argv[0], argv) == -1) 
+			{ // запускаем процесс
+				perror("EXEC");
+				return;
+			}
+			close(fd);
+			dup2(stdin_fd, 1);
+		}
+
 	}
 		
 	return 0;
