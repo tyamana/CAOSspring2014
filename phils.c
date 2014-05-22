@@ -9,13 +9,14 @@
 #include <fcntl.h>
 
 #define NAME_LENGTH 20 //philosopher name
-#define WORK_TIME 30   //time of program working in seconds
+#define WORK_TIME 20   //time of program working in seconds
 
 int file_fd;
 int philNum;   //number of philosophers
 char** phils; //names of philosophers 
 pthread_mutex_t* forks;
 pthread_mutex_t screen = PTHREAD_MUTEX_INITIALIZER;
+double* waitingTime;
 
 void PrintLogString(char* s, int id)
 {
@@ -41,6 +42,9 @@ void Eat(int id)
 	
 	PrintLogString(" need forks!\n", id);
 	
+	struct timeval startTime, finTime;
+	gettimeofday(&startTime, NULL);
+	
 	for(i = 0; i < 2; i++)
 	{
 		pthread_mutex_lock(forks + f[i]);
@@ -48,12 +52,16 @@ void Eat(int id)
 		sprintf(s," has got the fork%d\n",f[i]);
 		PrintLogString(s, id);
 		//a second delay for showing the strict order of getting forks
-		sleep(1);
+		usleep(50000);
 	}
+	
+	gettimeofday(&finTime, NULL);
+	waitingTime[id] += (double)finTime.tv_sec - (double)startTime.tv_sec
+					+ ((double)finTime.tv_usec) / 1000000 - ((double)startTime.tv_usec) / 1000000;
 	
 	PrintLogString(" starts eating\n", id);
 	for(i = 0, ration = 3 + rand() % 8; i < ration; i++)
-		sleep(1);
+		usleep(10000);
 	PrintLogString(" finishes eating\n", id);
 	
 	for(i = 0; i < 2; i++)
@@ -67,7 +75,7 @@ void Think(int id)
 	do
 	{
 		t = rand() % 5;
-		usleep(1500000 + rand() % 1000000);
+		usleep(15000 + rand() % 10000);
 	} while(t);
 	PrintLogString(" finishes thinking\n", id);
 }
@@ -90,7 +98,7 @@ int main(int argc, char** argv)
 		_exit(1);
 	}
 	srand(time(NULL));
-	file_fd = open("LOG.txt", O_WRONLY | O_TRUNC);
+	file_fd = open("LOG.txt", O_WRONLY | O_TRUNC | O_CREAT, 00200);
 	if(file_fd < 0)
 	{
 		perror("open() error");
@@ -116,9 +124,14 @@ int main(int argc, char** argv)
 		pthread_mutex_init(forks + (id[i] = i), NULL);
 	for(i = 0; i < philNum; i++)
 		pthread_create(tid + i, NULL, Philosophize, id + i);
+	waitingTime = (double*)calloc(philNum, sizeof(double));
 	
 	sleep(WORK_TIME);
 	
+	for(i = 0; i < philNum; i++)
+		printf("%d %f\n", i, waitingTime[i]);
+	
+	free(waitingTime);
 	for(i = 0; i < philNum; i++)
 		pthread_cancel(tid[i]);
 	for(i = 0; i < philNum; i++)	
