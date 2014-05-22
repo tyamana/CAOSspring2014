@@ -35,20 +35,19 @@ int main()
 	
 	while(1)
 	{
-		//write(1, "external\n", 9);
 		int i, j; //counters
 		int fd, stdin_fd = 0;
 		char* argv[MAXARG];
 		for(i = 0; i < MAXARG; i++)
 			argv[i] = (char*)malloc(MAXSIZE*sizeof(char));
 		char* argument = (char*)malloc(MAXSIZE*sizeof(char)); 
-		int flags[3] = {0, 0, 0};
+		int flags[5] = {0};
 		/*flags[o] - memory flag, if it == 1, then we should realloc()
 		  flags[1] - output to a file flag 
-		  flags[2] - output to an end of file flag */
+		  flags[2] - output to an end of file flag 
+		  flags[3] - run ib background flag
+		  flags[4] - conveyor*/
 		int fileIndex = 0; // index of argument in argv with path of file
-		int run_in = 0; // run in background
-		int conveyorWasDetected = 0;
 		int convDelimsId[100] = {0};
 		int delimsNum = 0; //number of delimiters
 		i = j = 0; // j = counter of number of arguments
@@ -59,7 +58,6 @@ int main()
 		int lastArgumentHasRead = 0;
 		while( !lastArgumentHasRead )
 		{
-			//write(1, "internal\n", 9);
 			read(0, buf, 1);
 			c = buf[0];
 			//conveyor catcher
@@ -76,8 +74,8 @@ int main()
 					j++;
 					delimsNum++;
 					i = 0;
-					if( !conveyorWasDetected )
-						conveyorWasDetected = 1;
+					if( !flags[4] )
+						flags[4] = 1;
 				}
 				else
 				{
@@ -94,8 +92,29 @@ int main()
 				}
 			}
 			//run in background
-			else if (c == '&') {
-				run_in = 1;
+			else if (c == '&' && i == 0) 
+			{
+				argument[i++] = c;
+				read(0, buf, 1);
+				c = buf[0];
+				if(c == ' ' || c == '\n')
+				{
+					flags[3] = 1;
+					i = 0;
+				}
+				else
+				{
+					while( c != ' ' && c != '\n')
+					{
+						argument[i] = c;
+						read(0, buf, 1);
+						c = buf[0];
+						i++;
+					}
+					argument[i] = '\0';
+					printf("Unknown command \"%s\"\n", argument);
+					argumentsAreCorrect = 0;
+				}
 			}
 			//output in file
 			else if(c == '>' && i == 0)
@@ -229,9 +248,6 @@ int main()
 		
 		if(argumentsAreCorrect)
 		{
-			//write(1, "ya tut\n", 7);
-			//for(i = 0; i < j; i++)
-			//	printf("%s\n", argv[i]);
 			argv[j] = NULL;
 			if(strcmp(argv[0], "pwd") == 0)
 			{
@@ -262,23 +278,100 @@ int main()
 						printf("%s\n", curDir);
 				}
 			}
-			else
+			else if (flags[4]) //CONVEYOR
+			{
+				int pipefd[2];
+				int pipefderr[2]; // for errors
+				int stdin_fd = dup(0);    //    for
+				int stdout_fd = dup(1);   // return fd
+				int prevout = dup(0);
+				int oldstdout = dup(1);
+				int children[MAXARG];
+				int childrenerr[MAXARG];
+				int i;
+				
+				for (i = 0; i <= delimsNum; ++i) 
+				{	
+					pipe(pipefd);
+					pipe(pipefderr);
+					if (i != delimsNum)
+						argv[ convDelimsId[i] ] = NULL;
+					int child1 = fork();	
+					if (child1 == 0) 
+					{
+						close(pipefderr[0]);
+						close(pipefd[0]);
+						dup2(prevout, 0);
+						dup2(pipefderr[1], 2);
+						if ( i != (delimsNum) ) {
+							dup2(pipefd[1], 1);
+						}
+						else {
+							dup2(oldstdout, 1);			
+						}			
+						if (i > 0) 
+							execvp(argv[ convDelimsId[i - 1] + 1 ], argv + convDelimsId[i - 1] + 1 );
+						else
+							execvp(argv[0], argv );
+					}
+					else 
+					{							
+						children[i] = child1;
+						close(pipefderr[1]);
+						close(pipefd[1]);
+						int child2 = fork();
+						if (child2 == 0) {
+							close(pipefd[0]);
+							int error_flag = 0;
+							char c;
+							while (read(pipefderr[0], &c, 1) == 1) {
+								if (!error_flag) {
+									fprintf(stderr, "%d: begin of error list\n", i);
+									error_flag = 1;			
+								}					
+								fprintf(stderr, "%c", c);				
+							}
+							if (error_flag) {
+								fprintf(stderr, "%d: end of error list\n", i);	
+							}
+							close(pipefderr[0]);
+							return 0;
+						}
+						else {
+							childrenerr[i] = child2;	
+						}	
+						close(pipefderr[0]);
+						close(prevout);
+						prevout = pipefd[0];	
+					}
+				}
+				close(prevout);
+				for (i = 0; i < delimsNum + 1; ++i) {
+					waitpid(childrenerr[i], NULL, 0);	
+				}
+				for (i = 0; i < delimsNum + 1; ++i) {
+					int status;
+					waitpid(children[i], &status, 0);
+				}
+				dup2(stdin_fd, 0);
+				dup2(stdout_fd, 1);
+			}
 			// RUNNING
-			if (run_in) // run in background
+			else if (flags[3]) // run in background
 			{ 
-				printf("**\n");
 				int PID = fork();	
 				if (PID < 0) 
 				{ 
 					perror("FORK");
-					exit(0);	
+					continue;	
 				}
 				
 				if (PID == 0)
 				{ // потомок выполняет
-					int stdin_fd = dup(1);
+					int stdin_fd = 0;
 					if (flags[1]) {
-						int fd = open(argv[fileIndex], O_CREAT | O_TRUNC, 0777);
+						stdin_fd = dup(1);
+						int fd = open(argv[fileIndex], O_CREAT | O_TRUNC | O_WRONLY, 0777);
 						if (fd < 0)
 						{
 							perror("> FILE");
@@ -286,71 +379,84 @@ int main()
 						}
 						if (dup2(fd, 1) < 0) {
 							perror("DUP");
+							continue;
 						}
 					}
 					else if (flags[2]) {
-						int fd = open(argv[fileIndex], O_APPEND, 0777);
+						stdin_fd = dup(1);
+						int fd = open(argv[fileIndex], O_APPEND | O_WRONLY, 0777);
 						if (fd < 0) {
 							perror(">> FILE");
 							continue;
 						}
 						if (dup2(fd, 1) < 0) {
 							perror("DUP");
+							continue;
 						}
 					}
 					if (execvp(argv[0], argv) == -1) 
 					{ // запускаем процесс
 						perror("EXEC");
-						return;
+						continue;
+					}
+					close(fd);
+					if(stdin_fd != 0)
+						dup2(stdin_fd, 1);
+					return;
+				}
+				else 
+				{ // родитель читает дальше
+					continue;
+				}	
+			}
+			else 
+			{
+				int PID = fork();	
+				if (PID < 0) 
+				{ 
+					perror("FORK");
+					continue;	
+				}
+				
+				if (PID == 0)
+				{ // потомок выполняет
+					int stdin_fd = dup(1);
+					if (flags[1]) {
+						int fd = open(argv[fileIndex], O_CREAT | O_TRUNC | O_WRONLY, 0777);
+						if (fd < 0)
+						{
+							perror("> FILE");
+							continue;
+						}
+						if (dup2(fd, 1) < 0) {
+							perror("DUP");
+							continue;
+						}
+					}
+					else if (flags[2]) {
+						int fd = open(argv[fileIndex], O_APPEND | O_WRONLY, 0777);
+						if (fd < 0) {
+							perror(">> FILE");
+							continue;
+						}
+						if (dup2(fd, 1) < 0) {
+							perror("DUP");
+							continue;
+						}
+					}
+					if (execvp(argv[0], argv) == -1) 
+					{ // запускаем процесс
+						perror("EXEC");
+						continue;
 					}
 					close(fd);
 					dup2(stdin_fd, 1);
 					return;
 				}
 				else 
-				{ // родитель читает дальше
-					//int status;
-					//waitpid(PID, &status, WUNTRACED);
-					continue;
-				}	
-			}
-			else 
-			{
-				int stdout_fd = 0;
-				//int stdin_fd = dup(1);
-				if (flags[1]) {
-					stdout_fd = dup(1);
-					int fd = open(argv[fileIndex], O_CREAT | O_TRUNC, 0777);
-					if (fd < 0)
-					{
-						perror("> FILE");
-						continue;
-					}
-					if (dup2(fd, 1) < 0) {
-						perror("DUP");
-					}
-					
-				}
-				else if (flags[2]) {
-					stdout_fd = dup(1);
-					int fd = open(argv[fileIndex], O_APPEND, 0777);
-					if (fd < 0) {
-						perror(">> FILE");
-						continue;
-					}
-					if (dup2(fd, 1) < 0) {
-						perror("DUP");
-					}
-				}
-				if (execvp(argv[0], argv) == -1) 
-				{ // запускаем процесс
-					perror("EXEC");
-					return;
-				}
-				if(stdout != 0)
-				{
-					close(fd);
-					dup2(stdout_fd, 1);
+				{ 
+					int status;
+					waitpid(PID, &status, WUNTRACED);
 				}
 			}
 		}
